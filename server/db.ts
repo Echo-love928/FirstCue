@@ -106,7 +106,7 @@ export class Store {
   put(space: string, id: string, value: unknown): void { this.db.prepare('INSERT INTO objects VALUES(?,?,?,?) ON CONFLICT(space,id) DO UPDATE SET data=excluded.data,updated=excluded.updated').run(space, id, JSON.stringify(value), Date.now()); }
   remove(space: string, id: string): void { this.db.prepare('DELETE FROM objects WHERE space=? AND id=?').run(space, id); }
   transaction<T>(fn: () => T): T { this.db.exec('BEGIN IMMEDIATE'); try { const value = fn(); this.db.exec('COMMIT'); return value; } catch (error) { this.db.exec('ROLLBACK'); throw error; } }
-  settings(): Settings { return {...(this.get<Settings>('state', 'settings') || defaults),lookbackHours:FRESHNESS_HOURS}; }
+  settings(): Settings { return {...defaults,...this.get<Settings>('state', 'settings'),lookbackHours:FRESHNESS_HOURS}; }
   day(): string { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
   usage(): Record<string, number> { return Object.fromEntries(this.db.prepare('SELECT kind,used FROM usage WHERE day=?').all(this.day()).map(row => [row.kind, row.used])); }
   reserve(kind: string, amount: number, limit: number): boolean { return this.transaction(() => { const used = Number(this.db.prepare('SELECT used FROM usage WHERE day=? AND kind=?').get(this.day(), kind)?.used || 0); if (used + amount > limit) return false; this.db.prepare('INSERT INTO usage VALUES(?,?,?) ON CONFLICT(day,kind) DO UPDATE SET used=excluded.used').run(this.day(), kind, used + amount); return true; }); }

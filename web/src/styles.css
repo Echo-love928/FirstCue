@@ -176,6 +176,7 @@ input,textarea,select{max-width:100%}
 .account-chip{background:white;border:1px solid var(--line);border-radius:5px;padding:8px 7px 8px 12px;display:flex;align-items:center;gap:9px;font-size:11px}
 .account-chip .small{font-size:9px;color:#8d7e70}
 .notification-list{display:grid;gap:12px}
+.segmented.notification-filters{grid-template-columns:repeat(3,minmax(0,1fr));margin:20px 0;width:260px;max-width:100%}
 .notification{display:flex;align-items:center;gap:17px;padding:22px;background:white;border:1px solid var(--line);border-radius:7px}
 .notification-icon{display:grid;place-items:center;width:40px;height:40px;flex-shrink:0;color:var(--teal);background:#f3eee9;border-radius:8px}
 .notification>div:nth-child(2){flex:1;min-width:0}

@@ -2,7 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { Agent, EnvHttpProxyAgent, fetch } from 'undici';
 import ipaddr from 'ipaddr.js';
 export interface HttpDocument { status: number; url: string; headers: Record<string, string>; text: string; }
-export interface RequestOptions { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string; maxBytes?: number; timeoutMs?: number; }
+export interface RequestOptions { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string; maxBytes?: number; timeoutMs?: number; allowRedirects?: boolean; }
 export interface HttpClient { request(url: string, options?: RequestOptions): Promise<HttpDocument>; }
 export function publicAddress(address: string): boolean {
   try { let parsed = ipaddr.parse(address); if (parsed.kind() === 'ipv6' && (parsed as ipaddr.IPv6).isIPv4MappedAddress()) parsed = (parsed as ipaddr.IPv6).toIPv4Address(); return parsed.range() === 'unicast'; } catch { return false; }
@@ -46,7 +46,7 @@ export class PublicHttp implements HttpClient {
       }
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         await response.body?.cancel();
-        if (options.headers?.Authorization || options.headers?.['X-API-Key']) throw new Error('拒绝将服务凭据转发到重定向地址');
+        if (options.allowRedirects === false || options.headers?.Authorization || options.headers?.['X-API-Key']) throw new Error('拒绝将服务凭据转发到重定向地址');
         const location = response.headers.get('location'); if (!location) throw new Error('重定向没有目标地址');
         url = publicUrl(new URL(location, url).href); continue;
       }
