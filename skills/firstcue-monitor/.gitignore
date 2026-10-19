@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.firstcue/
+.env
+.env.*
+!.env.example
+*.log

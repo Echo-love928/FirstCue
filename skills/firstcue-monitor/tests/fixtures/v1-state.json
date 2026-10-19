@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "settings": {
+    "lookbackHours": 120,
+    "searchPerRunLimit": 16,
+    "readPerRunLimit": 10,
+    "xPagesPerQuery": 3,
+    "xDailyLimit": 200,
+    "xResultDailyLimit": 2000,
+    "cacheMinutes": 30,
+    "intervalMinutes": 30
+  },
+  "rules": [
+    {
+      "id": "legacy-rule",
+      "name": "Legacy AI",
+      "query": "AI model release",
+      "kind": "keyword",
+      "enabled": true,
+      "notify": false
+    }
+  ],
+  "sources": [
+    {
+      "id": "bing",
+      "name": "Bing",
+      "kind": "search",
+      "url": "https://www.bing.com/search",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "sogou",
+      "name": "搜狗",
+      "kind": "search",
+      "url": "https://www.sogou.com/web",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "baidu",
+      "name": "百度（备选）",
+      "kind": "search",
+      "url": "https://m.baidu.com/s",
+      "enabled": false,
+      "builtin": true
+    },
+    {
+      "id": "duckduckgo",
+      "name": "DuckDuckGo（备选）",
+      "kind": "search",
+      "url": "https://html.duckduckgo.com/html/",
+      "enabled": false,
+      "builtin": true
+    },
+    {
+      "id": "twitter",
+      "name": "X / TwitterAPI.io",
+      "kind": "x",
+      "url": "https://api.twitterapi.io",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI News",
+      "kind": "rss",
+      "url": "https://openai.com/news/rss.xml",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "google",
+      "name": "Google AI",
+      "kind": "rss",
+      "url": "https://blog.google/innovation-and-ai/technology/ai/rss/",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "huggingface",
+      "name": "Hugging Face",
+      "kind": "rss",
+      "url": "https://huggingface.co/blog/feed.xml",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "kind": "rss",
+      "url": "https://cursor.com/changelog/rss.xml",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "vscode",
+      "name": "VS Code",
+      "kind": "rss",
+      "url": "https://code.visualstudio.com/feed.xml",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "kind": "page",
+      "url": "https://www.anthropic.com/news",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "qwen",
+      "name": "Qwen",
+      "kind": "page",
+      "url": "https://qwenlm.github.io/",
+      "enabled": true,
+      "builtin": true
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "kind": "page",
+      "url": "https://api-docs.deepseek.com/",
+      "enabled": true,
+      "builtin": true
+    }
+  ],
+  "accounts": [],
+  "evidence": {
+    "45401ef81bacb3f03afeaad5": {
+      "contentKind": "article",
+      "author": "example.com",
+      "publishedAt": "2026-10-17T00:00:00.000Z",
+      "fetchedAt": "2026-10-19T07:58:56.855Z",
+      "updatedAt": null,
+      "outboundUrls": [],
+      "metrics": {},
+      "ruleIds": [
+        "legacy-rule"
+      ],
+      "discoveredBy": [
+        "legacy-feed"
+      ],
+      "sourceId": "legacy-feed",
+      "sourceKind": "rss",
+      "url": "https://example.com/legacy-release",
+      "title": "Legacy release",
+      "text": "We released the model with a larger context window.",
+      "id": "45401ef81bacb3f03afeaad5",
+      "contentHash": "655f265499703f14bb969c15",
+      "firstDiscoveredAt": "2026-10-19T07:58:56.855Z"
+    }
+  },
+  "analyses": {
+    "89fb6dfb-9e55-47a1-87d8-bd9f44fa31de": {
+      "engine": "Legacy host",
+      "title": "Legacy report",
+      "events": [
+        {
+          "title": "Legacy release",
+          "summary": "A model was released.",
+          "verdict": "confirmed",
+          "importance": "high",
+          "relevance": "direct",
+          "reason": "The saved source states the release.",
+          "occurredAt": null,
+          "ruleIds": [
+            "legacy-rule"
+          ],
+          "citations": [
+            {
+              "evidenceId": "45401ef81bacb3f03afeaad5",
+              "quote": "We released the model"
+            }
+          ],
+          "id": "cc7356490db55d30be0f4916",
+          "evidenceHashes": {
+            "45401ef81bacb3f03afeaad5": "655f265499703f14bb969c15"
+          },
+          "ruleFingerprints": {
+            "legacy-rule": "ea28be343a7b813bff9ad4e5"
+          }
+        }
+      ],
+      "id": "89fb6dfb-9e55-47a1-87d8-bd9f44fa31de",
+      "createdAt": "2026-10-19T07:58:56.859Z"
+    }
+  },
+  "checkpoints": {},
+  "cache": {},
+  "backoff": {},
+  "usage": {},
+  "runs": [],
+  "notifications": []
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "FirstCue 热点监控"
+  short_description: "独立采集搜索、X 与订阅证据，由宿主 AI 分析热点、管理监控并生成报告"
+  default_prompt: "使用 $firstcue-monitor 采集我关注的最新热点，核对原始证据并整理中文报告。"
