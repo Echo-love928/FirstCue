@@ -6,8 +6,12 @@ FirstCue 是一款 AI 热点监控与情报聚合工具，帮助用户持续追�
 
 ## 截图
 <img width="1891" height="900" alt="image" src="https://github.com/user-attachments/assets/64b12668-5ecb-4db9-bb45-89d837aabc3a" />
-<img width="1615" height="831" alt="image" src="https://github.com/user-attachments/assets/986bee41-771b-40cb-83df-65cc648345d4" />
+
+<img width="1574" height="856" alt="image" src="https://github.com/user-attachments/assets/7d2b659b-39e6-4308-8b3d-7c37cc9d534c" />
+
+
 <img width="1605" height="891" alt="image" src="https://github.com/user-attachments/assets/9b675e9d-b2e4-41c4-8eaa-1d1f6d89c744" />
+
 <img width="1610" height="900" alt="image" src="https://github.com/user-attachments/assets/39aef370-2a0b-4d91-8a73-3986621653d8" />
 
 
