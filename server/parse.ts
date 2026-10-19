@@ -45,7 +45,7 @@ export function parseSearch(html: string, source: Source, base: string): Evidenc
     if(source.id === 'baidu') { try { href=JSON.parse(node.attr('data-log') || '{}').mu || href; } catch { /* Desktop cards can omit data-log. */ } }
     if (!title || !href) return; try { const url = searchLink(href, base); const host = new URL(url).hostname; if (/(^|\.)(bing|duckduckgo|brave|sogou)\.com$/.test(host) && !/\/link\?/.test(url)) return; if (/(^|\.)baidu\.com$/.test(host) && !/^(baike|baijiahao)\./.test(host) && !/\/link\?/.test(url)) return; if (!result.some(item => item.url === url)) result.push(makeEvidence(source, { url, title, text: node.find(selector.snippet).text() || title })); } catch { /* Invalid/private targets are excluded. */ } });
   if (!result.length && !/no results|did not match|没有找到|未找到相关|找不到.*结果/i.test(pageText)) throw new Error('无法识别搜索结果结构，未将此响应视为零结果');
-  return result.slice(0, 10);
+  return result.slice(0, 20);
 }
 export function article(html:string,url:string): Partial<Evidence> & {title:string;text:string;publishedAt:string|null;outboundUrls:string[];descriptionOnly?:boolean;contentKind:'article'|'post'|'description'} {
   const $=load(html);const info=publication(html,url);

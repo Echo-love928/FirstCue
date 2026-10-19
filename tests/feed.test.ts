@@ -1,7 +1,7 @@
 import { fixtureAssessment } from './analysis-fixture.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { eventTime, feedSources, heatScore, publishedTime, selectSignals, signalSources, type FeedFilters } from '../shared/feed.js';
+import { eventTime, feedSources, heatScore, publishedTime, selectSignals, selectTopSignals, signalSources, type FeedFilters } from '../shared/feed.js';
 import { currentSignal, historicalSignal } from '../shared/freshness.js';
 import type { Candidate, Evidence, Rule, Signal } from '../shared/types.js';
 import { analysisSchema, validateBatch } from '../server/ai.js';
@@ -86,6 +86,34 @@ test('热度综合包含浏览量、去重并取最热原帖，零互动和指�
   assert.deepEqual(ids([post, views]), ['views', 'post']);
   assert.deepEqual(ids([signal('unknown'), signal('zero', {}, { likes: 0 })]), ['zero', 'unknown']);
   assert.equal(heatScore(signal('invalid', {}, { likes: -1, views: NaN })), null);
+});
+
+test('热门展示最多一百条，收藏和书签较多的信息优先，未知指标排后',()=>{
+  const inputs=Array.from({length:150},(_,index)=>signal('item-'+index,{}, {likes:index}));
+  const favorite=signal('favorite',{}, {favorites:1000}),bookmark=signal('bookmark',{}, {bookmarks:900});
+  const selected=selectTopSignals([...inputs,favorite,bookmark,signal('unknown')],filters,now);
+  assert.equal(selected.total,153);assert.equal(selected.items.length,100);
+  assert.deepEqual(selected.items.slice(0,2).map(item=>item.id),['favorite','bookmark']);
+  assert.ok(!selected.items.some(item=>item.id==='unknown'||item.id==='item-0'));
+  assert.equal(selectTopSignals(inputs.slice(0,4),filters,now).items.length,4);
+});
+
+test('先筛选来源和关键词再取热度前一百，其他排序只重排热门集合',()=>{
+  const other=Array.from({length:110},(_,index)=>signal('other-'+index,{ruleIds:['other']},{likes:10000+index}));
+  const target=Array.from({length:105},(_,index)=>signal('target-'+index,{ruleIds:['target']},{likes:index}));
+  const selected=selectTopSignals([...other,...target],{...filters,keyword:'target'},now);
+  assert.equal(selected.total,105);assert.equal(selected.items.length,100);assert.ok(selected.items.every(item=>item.id.startsWith('target-')));
+  const lowNew=signal('low-new',{occurredAt:hoursAgo(0.01)},{publishedAt:hoursAgo(0.01),likes:0});
+  const full=[...other,lowNew];
+  const popular=selectTopSignals(full,filters,now),recent=selectTopSignals(full,{...filters,sort:'published'},now);
+  assert.deepEqual(new Set(popular.items.map(item=>item.id)),new Set(recent.items.map(item=>item.id)));
+  assert.ok(!recent.items.some(item=>item.id==='low-new'));
+});
+
+test('播放、收藏、投币与弹幕共同参与热度，重复证据不会累加',()=>{
+  const entry=signal('engaged',{}, {likes:10,reposts:2,replies:3,views:1000,bookmarks:4,favorites:5,coins:6,danmaku:7});
+  assert.equal(heatScore(entry),64);
+  assert.equal(heatScore({...entry,evidence:[...entry.evidence,{...entry.evidence[0],id:'duplicate'}]}),64);
 });
 
 test('发布排序使用原文日期，发现排序使用首次抓取，重要度四级且同分顺序稳定', () => {

@@ -11,6 +11,7 @@ export const sortLabels = { heat: '热度综合', published: '最新发布', dis
 export type FeedSort = keyof typeof sortLabels;
 export type TimeRange = keyof typeof timeRanges;
 export const DEFAULT_TIME_RANGE:TimeRange='5d';
+export const FEED_LIMIT = 100;
 export interface FeedFilters {
   source: string;
   importance: Importance | 'all';
@@ -47,6 +48,7 @@ export function publishedTime(signal: Signal, now = Date.now()): number | null {
 }
 // Discovery, re-fetching and edits must never make an older event recent.
 export function eventTime(signal: Signal, now = Date.now()): number | null {
+  if(signal.discoveryOnly)return timestamp(signal.occurredAt||signal.firstSeenAt,now);
   return signal.occurredAt ? timestamp(signal.occurredAt, now) : publishedTime(signal, now);
 }
 // Use the strongest original post; duplicate discovery channels cannot inflate heat.
@@ -86,4 +88,12 @@ export function selectSignals(signals: Signal[], filters: FeedFilters, now = Dat
     || (eventTime(b, now) ?? -1) - (eventTime(a, now) ?? -1)
     || (timestamp(b.firstSeenAt, now) ?? -1) - (timestamp(a.firstSeenAt, now) ?? -1)
     || a.id.localeCompare(b.id));
+}
+
+// Filter the full collection before choosing popular posts. Other sort controls
+// reorder this same shortlist instead of replacing it with low-engagement posts.
+export function selectTopSignals(signals: Signal[], filters: FeedFilters, now = Date.now()): { items: Signal[]; total: number } {
+  const ranked=selectSignals(signals,{...filters,sort:'heat'},now);
+  const top=ranked.slice(0,FEED_LIMIT);
+  return {items:filters.sort==='heat'?top:selectSignals(top,filters,now),total:ranked.length};
 }

@@ -17,12 +17,14 @@ export function withinWindow(value: string | null | undefined, now = Date.now())
   return time !== null && time >= now - FRESHNESS_MS;
 }
 export function signalTime(signal: Signal, now = Date.now()): number | null {
+  if(signal.discoveryOnly)return timestamp(signal.occurredAt||signal.firstSeenAt,now);
   // An explicit event date always wins: a new post must not refresh an old event.
   if (signal.occurredAt) return timestamp(signal.occurredAt, now);
   const dates = signal.evidence.filter(item => qualifiedTwitter(item) || nonTwitterDiscovery(item,now)).map(item => timestamp(item.publishedAt, now)).filter((time): time is number => time !== null);
   return dates.length ? Math.min(...dates) : null;
 }
 export function currentSignal(signal: Signal, now = Date.now()): boolean {
+  if(signal.discoveryOnly){const time=signalTime(signal,now);return !signal.auditOnly&&time!==null&&time>=now-FRESHNESS_MS;}
   if(signal.relevanceVersion !== undefined && !directAssessments(signal).length)return false;
   const time = signalTime(signal, now);
   const other=signal.evidence.some(item=>nonTwitterDiscovery(item,now));
@@ -34,6 +36,7 @@ export function defaultSignal(signal: Signal, now = Date.now()): boolean {
 }
 // Historical browsing restores only expiration, never a quality or fact-check rejection.
 export function historicalSignal(signal: Signal, now = Date.now()): boolean {
+  if(signal.discoveryOnly)return !signal.auditOnly&&signalTime(signal,now)!==null;
   if (currentSignal(signal, now)) return true;
   if (signal.auditOnly && signal.auditReason !== '超过 5 天，自动退出热点列表') return false;
   if (signal.isNewsworthy !== true || signal.isNewEvent !== true || !signal.screeningVersion) return false;

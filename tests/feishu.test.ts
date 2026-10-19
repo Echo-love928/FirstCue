@@ -97,11 +97,11 @@ test('邮箱失败不阻塞飞书成功；飞书重试不会重发已提交的�
       queueNotifications(store, [value], [rule], now); queueFeishuNotifications(store, [value], [rule], now);
       const mailer = new Mailer(store, { verify: async () => {}, sendMail: async () => { mails++; if (mailFails) throw Error('mail offline'); return { accepted: ['test@example.com'] }; } });
       const notifier = new FeishuNotifier(store, { request: async () => { pushes++; if (!mailFails && pushes === 1) throw Error('feishu offline'); return response({ code: 0 }); } });
-      await Promise.all([mailer.flush(now, true), notifier.flush(now)]);
+      await Promise.all([mailer.flush(now, true, true), notifier.flush(now, true)]);
       assert.equal(store.list<MailJob>('mail')[0].status, mailFails ? 'retry' : 'submitted');
       assert.equal(store.list<FeishuJob>('feishu')[0].status, mailFails ? 'submitted' : 'retry');
-      if (!mailFails) { const retry = store.list<FeishuJob>('feishu')[0]; await Promise.all([mailer.flush(Date.parse(retry.nextAttemptAt), true), notifier.flush(Date.parse(retry.nextAttemptAt))]); assert.equal(mails, 1); assert.equal(pushes, 2); }
-      else { await notifier.flush(now + 1000); assert.equal(pushes, 1); }
+      if (!mailFails) { const retry = store.list<FeishuJob>('feishu')[0]; await Promise.all([mailer.flush(Date.parse(retry.nextAttemptAt), true, true), notifier.flush(Date.parse(retry.nextAttemptAt), true)]); assert.equal(mails, 1); assert.equal(pushes, 2); }
+      else { await notifier.flush(now + 1000, true); assert.equal(pushes, 1); }
     } finally { store.close(); }
   }
 });
@@ -113,10 +113,10 @@ test('飞书限流或超时退避重试，最多四次；凭据不进入错误�
     const notifier = new FeishuNotifier(store, { request: async () => { calls++; throw Error(`timeout ${config.feishuWebhook} ${config.feishuSecret}`); } });
     let time = now;
     for (let i = 1; i <= 4; i++) {
-      await notifier.flush(time); const job = store.list<FeishuJob>('feishu')[0];
+      await notifier.flush(time, true); const job = store.list<FeishuJob>('feishu')[0];
       assert.equal(job.attempts, i); assert.equal(job.status, i < 4 ? 'retry' : 'failed');
       assert.ok(!job.error!.includes(config.feishuWebhook)); assert.ok(!job.error!.includes(config.feishuSecret));
-      await notifier.flush(time + 1); assert.equal(calls, i); time = Date.parse(job.nextAttemptAt);
+      await notifier.flush(time + 1, true); assert.equal(calls, i); time = Date.parse(job.nextAttemptAt);
     }
     const state = JSON.stringify(dashboard(store)); assert.ok(!state.includes(config.feishuWebhook)); assert.ok(!state.includes(config.feishuSecret));
     assert.ok(!safeError(Error(config.feishuWebhook.split('/').at(-1)!)).includes('test-only-webhook'));
@@ -130,11 +130,11 @@ test('关闭飞书不影响邮箱；重新启用和更换群后取消旧任务�
       queueFeishuNotifications(store, [value], [rule], now);
       store.put('state', 'settings', { ...store.settings(), feishuEnabled: false });
       const notifier = new FeishuNotifier(store, { request: async () => { calls++; return response({ code: 0 }); } });
-      await notifier.flush(now + 1000); assert.equal(calls, 0); assert.equal(queueNotifications(store, [value], [rule], now), 1);
+      await notifier.flush(now + 1000, true); assert.equal(calls, 0); assert.equal(queueNotifications(store, [value], [rule], now), 1);
       store.put('state', 'settings', { ...store.settings(), feishuEnabled: true });
       if (changeGroup) { config.feishuWebhook += '-changed'; queueFeishuNotifications(store, [], [], now + 2000); }
       else activateFeishu(store, now + 2000);
-      await notifier.flush(now + 3000); assert.equal(calls, 0); assert.equal(store.list<FeishuJob>('feishu')[0].status, 'failed');
+      await notifier.flush(now + 3000, true); assert.equal(calls, 0); assert.equal(store.list<FeishuJob>('feishu')[0].status, 'failed');
       assert.equal(queueFeishuNotifications(store, [value], [rule], now + 3000), 0);
     } finally { store.close(); }
   }
@@ -145,7 +145,7 @@ test('飞书队列和启用时间在重启后保留；旧设置默认关闭飞�
   try {
     const { store, value } = prepare(filename); queueFeishuNotifications(store, [value], [rule], now); store.close();
     const reopened = new Store(filename);
-    try { await new FeishuNotifier(reopened, success).flush(now); assert.equal(reopened.list<FeishuJob>('feishu')[0].status, 'submitted'); }
+    try { await new FeishuNotifier(reopened, success).flush(now, true); assert.equal(reopened.list<FeishuJob>('feishu')[0].status, 'submitted'); }
     finally { reopened.close(); }
     const legacy = new Store(':memory:');
     try { const { feishuEnabled: _, ...settings } = legacy.settings(); legacy.put('state', 'settings', settings); assert.equal(legacy.settings().feishuEnabled, false); }

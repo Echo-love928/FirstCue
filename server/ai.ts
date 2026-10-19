@@ -45,11 +45,13 @@ export function parseAnalysisOutput(raw:unknown,evidence:Evidence[],rules:Rule[]
     if(!accepted)exclusions.push({evidenceId:id,category:rejected.some(item=>item.level==='insufficient')?'insufficient':rejected.some(item=>item.level==='weak')?'weak':'unrelated',reason:rejected.map(item=>item.reason).join('；').slice(0,600)||'原文未提供直接关联依据'});
   }
   const grouped=new Map<string,Analysis['events'][number]>();
+  const statuses=new Map<string,Set<Analysis['events'][number]['status']>>();
   for(const event of generated){
     const root=evidence.find(item=>item.id===event.evidenceIds[0]);
     const videoKey=root&&/bilibili\.com\/video\//i.test(root.finalUrl)?root.finalUrl:'';
     if(videoKey)event.evidenceIds=event.evidenceIds.filter(id=>{const item=evidence.find(item=>item.id===id)!;return !/bilibili\.com\/video\//i.test(item.finalUrl)||item.finalUrl===videoKey;});
     const key=JSON.stringify([event.existingEventId,event.entity.toLowerCase().trim(),event.version.toLowerCase().trim(),event.eventType.toLowerCase().trim(),event.occurredAt?.slice(0,10),videoKey]);
+    const verdicts=statuses.get(key)||new Set<Analysis['events'][number]['status']>();verdicts.add(event.status);statuses.set(key,verdicts);
     const old=grouped.get(key);if(!old){grouped.set(key,event);continue;}
     const assessments=rules.map(rule=>{
       const choices=[...old.ruleAssessments,...event.ruleAssessments].filter(item=>item.ruleId===rule.id);
@@ -57,7 +59,11 @@ export function parseAnalysisOutput(raw:unknown,evidence:Evidence[],rules:Rule[]
       const citations=[...new Map(choices.filter(item=>item.level===chosen.level).flatMap(item=>item.citations).map(item=>[JSON.stringify(item),item])).values()].slice(0,4);
       return {...chosen,citations};
     });
-    grouped.set(key,{...old,evidenceIds:[...new Set([...old.evidenceIds,...event.evidenceIds])],ruleAssessments:assessments,ruleIds:assessments.filter(item=>item.level==='direct').map(item=>item.ruleId),status:old.status===event.status?old.status:'pending'});
+    const preferred=event.status==='confirmed'&&old.status!=='confirmed'?event:old;
+    // An unconfirmed report is not a contradiction to a verified announcement.
+    // Explicit rejection remains a conflict; validateBatch still checks proof/time.
+    const status=verdicts.has('rejected')?(verdicts.size>1?'pending':'rejected'):verdicts.has('confirmed')?'confirmed':'pending';
+    grouped.set(key,{...preferred,evidenceIds:[...new Set([...old.evidenceIds,...event.evidenceIds])],ruleAssessments:assessments,ruleIds:assessments.filter(item=>item.level==='direct').map(item=>item.ruleId),status});
   }
   // An excluded input cannot be borrowed as another event's supporting material.
   const excluded=new Set(exclusions.map(item=>item.evidenceId));
@@ -232,6 +238,8 @@ ${relevanceInstructions}
 输出格式以 JSON Schema 为准：顶层只输出 materials 对象；必须为 Schema 列出的每个证据编号填写自己的 events 与 exclusion。
 材料有相关事件时填写 events，exclusion=null；没有相关事件时 events=[]，exclusion 写 weak/unrelated/insufficient 及具体原因。不得同时填写事件与排除。
 每个事件对全部 rules 给出分析，并引用连续原文；即使某规则不匹配，也用原文说明不匹配的依据。直接相关必须引用当前这条材料，关联原文仅用于补充同一事件，不能借用其他事件给本条制造关联。不要输出 ruleIds、evidenceIds、临时事件编号或事件数组下标，应用根据当前材料与原文引用计算归属。
+同一批次若包含候选引用的官方原文，请同时引用候选自身与支持同一事实的官方原文，结合完整证据重新判断核实状态。原始线索自身待核实，不妨碍该事实在获得官方原文后确认；官方原文没有支持的额外说法仍须待核实，不能把不同事件拼成佐证。已有事件的 pending 状态只是上次证据不足，不作为本次结论的默认值。
+输出保持简洁：非 direct 的 reason 只写一句短说明，summary 为空，匹配字段没有依据则为空；使用一条最短必要原文引用，不为不匹配监控重复大段正文。direct 通常使用一至两条足够支持结论的短引用，版本与事实仍须完整可核对。
 非 direct 的 summary 必须为空；不允许 placeholder 或默认占位结论。是否直接相关按目标与原文判断，不受是否热门、是否新发布和是否已核实影响；这些限制分别填入 isNewsworthy/isNewEvent/status。`;
     const doc = await this.http.request('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', timeoutMs: 180000, maxBytes: 1024 * 1024, headers: { Authorization: `Bearer ${this.apiKey}`, 'Content-Type': 'application/json', 'X-OpenRouter-Title': 'FirstCue' }, body: JSON.stringify({ model: settings.model, provider: { require_parameters: true }, ...(capability?.reasoningEffort ? { reasoning: { effort: capability.reasoningEffort, exclude: true } } : {}), response_format: { type: 'json_schema', json_schema: { name: 'news_verification', strict: true, schema: jsonSchema } }, messages: [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify({ rules: rules.map(({ id, kind, name, query }) => ({ id, kind, name, query, intent:ruleIntent({kind,query}) })), priorEvents: prior.filter(item=>currentSignal(item)).slice(0, 30).map(({ id, entity, version, eventType, title, occurredAt }) => ({ id, entity, version, eventType, title, occurredAt })), evidence: evidence.map(item => ({ ...item, text: evidenceExcerpt(item, rules) })) }) }], max_tokens: 32000 }) });
     if (doc.status === 402) throw new Error(`OpenRouter 额度不足（402）；请检查账号或 Key 的可用额度${doc.headers['retry-after'] ? `，Retry-After: ${doc.headers['retry-after']}` : ''}。候选内容已保存，可在处理后重新核实。`);

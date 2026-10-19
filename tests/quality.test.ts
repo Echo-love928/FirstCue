@@ -33,7 +33,7 @@ test('普通与官方回复、引用、纯转发和未知类型均过滤',()=>{
 });
 test('四项门槛同时满足，官方、蓝 V 或附外链均不能豁免',()=>{
   assert.equal(assess(post()).decision,'eligible');
-  for(const extra of [{likes:0},{likes:9},{reposts:4},{views:499},{authorFollowers:99},{authorFollowers:undefined}]) {
+  for(const extra of [{likes:0},{likes:4},{reposts:0},{views:199},{authorFollowers:49},{authorFollowers:undefined}]) {
     assert.equal(assess(post({...extra,official:true,authorBlueVerified:true,outboundUrls:['https://openai.com/news/release']})).decision,'filtered');
   }
   assert.equal(assess(post({text:'Nice tool!',likes:100000})).decision,'filtered');

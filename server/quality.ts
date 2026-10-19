@@ -78,7 +78,7 @@ export function mergeEvidence(items: Evidence[]): Evidence[] {
     const latest = observed.at(-1);
     if(latest?.sourceKind==='x') Object.assign(metadata,{likes:latest.likes,reposts:latest.reposts,views:latest.views,authorFollowers:latest.authorFollowers,metricsUnavailable:latest.metricsUnavailable});
     const discovered = [old?.firstDiscoveredAt, old?.fetchedAt, item.firstDiscoveredAt, item.fetchedAt].filter((value): value is string => !!value && Number.isFinite(Date.parse(value)));
-    values.set(key, { ...best, ...metadata, discoveredBy, ...(discovered.length ? { firstDiscoveredAt: new Date(Math.min(...discovered.map(Date.parse))).toISOString() } : {}) });
+    values.set(key, { ...best, ...metadata, discoveredBy, discoveryRules:{...old?.discoveryRules,...item.discoveryRules}, ...(discovered.length ? { firstDiscoveredAt: new Date(Math.min(...discovered.map(Date.parse))).toISOString() } : {}) });
   }
   return [...values.values()];
 }

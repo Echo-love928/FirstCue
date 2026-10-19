@@ -126,7 +126,7 @@ test('首次基线、待核实、暂停和历史事件不通知；升级可通�
 test('邮件失败保留重试，同一 Message-ID 重试后才标为提交', async () => {
   const store = new Store(':memory:'); try { store.put('state', 'settings', { ...store.settings(), recipient: 'test@example.com' }); store.put('rules', 'rule', rule()); store.put('events', signal().id, signal()); queueNotifications(store, [signal()], [rule()], now); let calls = 0; const ids: unknown[] = [];
     const mailer = new Mailer(store, { verify: async () => true, sendMail: async message => { ids.push(message.messageId); if (++calls === 1) throw new Error('temporary failure'); return { accepted: ['test@example.com'] }; } });
-    await mailer.flush(now, true); const failed = store.list<{ status: string; nextAttemptAt: string }>('mail')[0]; assert.equal(failed.status, 'retry'); await mailer.flush(Date.parse(failed.nextAttemptAt), true); assert.equal(store.list<{ status: string }>('mail')[0].status, 'submitted'); assert.equal(ids[0], ids[1]);
+    await mailer.flush(now, true, true); const failed = store.list<{ status: string; nextAttemptAt: string }>('mail')[0]; assert.equal(failed.status, 'retry'); await mailer.flush(Date.parse(failed.nextAttemptAt), true, true); assert.equal(store.list<{ status: string }>('mail')[0].status, 'submitted'); assert.equal(ids[0], ids[1]);
   } finally { store.close(); }
 });
 test('配额与租约原子限制；陈旧租约可恢复', () => { const store = new Store(':memory:'); try { assert.equal(store.reserve('xRequests', 2, 3), true); assert.equal(store.reserve('xRequests', 2, 3), false); assert.equal(store.usage().xRequests, 2); assert.equal(store.lease('scan', 'one', 10000), true); assert.equal(store.lease('scan', 'two', 10000), false); store.release('scan', 'one'); assert.equal(store.lease('scan', 'two', 10000), true); } finally { store.close(); } });

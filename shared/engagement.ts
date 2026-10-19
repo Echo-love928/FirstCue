@@ -38,9 +38,10 @@ export function metadataFields(item: Partial<Evidence>): Partial<Evidence> {
 
 export function interactionScore(item: EngagementMetrics & { metricsUnavailable?: boolean }): number | null {
   if (item.metricsUnavailable) return null;
-  const values = (['likes', 'reposts', 'replies', 'views', 'points'] as const).map(key => count(item[key]));
+  const values = metricKeys.map(key => count(item[key]));
   if (!values.some(value => value !== undefined)) return null;
-  return (count(item.likes) ?? 0) + 2 * (count(item.reposts) ?? 0) + (count(item.replies) ?? 0) + .01 * (count(item.views) ?? 0) + (count(item.points) ?? 0);
+  return (count(item.likes) ?? 0) + 2 * (count(item.reposts) ?? 0) + (count(item.replies) ?? 0) + .01 * (count(item.views) ?? 0) + (count(item.points) ?? 0)
+    + 2 * (count(item.bookmarks) ?? 0) + 2 * (count(item.favorites) ?? 0) + 2 * (count(item.coins) ?? 0) + (count(item.danmaku) ?? 0);
 }
 
 export function metricRows(item: Evidence): { key: MetricKey; label: string; value: number | undefined }[] {

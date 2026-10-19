@@ -1,7 +1,7 @@
 import type { Evidence } from './types.js';
 
 export const TWITTER_FILTER_VERSION = 1;
-export const TWITTER_MINIMUM = { likes: 10, reposts: 5, views: 500, authorFollowers: 100 } as const;
+export const TWITTER_MINIMUM = { likes: 5, reposts: 1, views: 200, authorFollowers: 50 } as const;
 export const TWITTER_BLUE_WEIGHT = 1.1;
 export const TWITTER_METRICS_INTERVAL = 30 * 60000;
 

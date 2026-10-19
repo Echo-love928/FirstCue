@@ -13,7 +13,7 @@ import { nonTwitterDiscovery, platformOf } from '../shared/discovery.js';
 import { metadataFields, normalizeMetadata } from '../shared/engagement.js';
 import { sourceMetadata } from './metadata.js';
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
-export class Throttle { private last = new Map<string, number>(); async wait(key: string, ms: number): Promise<void> { const delay = Math.max(0, (this.last.get(key) || 0) + ms - Date.now()); if (delay) await sleep(delay); this.last.set(key, Date.now()); } }
+export class Throttle { private last = new Map<string, number>(); async wait(key: string, ms: number): Promise<void> { const now=Date.now();const at=Math.max(now,(this.last.get(key)||0)+ms);this.last.set(key,at);if(at>now)await sleep(at-now); } }
 const rawCount = z.unknown().optional();
 const tweetSchema = z.object({ id: z.string(), url: z.string(), text: z.string(), createdAt: z.string(), author: z.object({ id: z.string(), userName: z.string(), name:z.string().nullish(),profilePicture:z.string().nullish(),followers:rawCount,isBlueVerified:z.boolean().nullish() }), likeCount: rawCount, replyCount: rawCount, retweetCount: rawCount, viewCount: rawCount, bookmarkCount:rawCount, isReply: z.boolean().nullish(), inReplyToId: z.string().nullish(), inReplyToUserId: z.string().nullish(), conversationId: z.string().nullish(), retweeted_tweet: z.unknown().optional(), quoted_tweet: z.unknown().optional(), entities: z.object({urls:z.array(z.object({expanded_url:z.string().optional(),url:z.string().optional()})).optional()}).nullish() }).passthrough();
 const pageSchema = z.object({ tweets: z.array(tweetSchema), has_next_page: z.boolean(), next_cursor: z.string().nullish(), status: z.string().optional(), message: z.string().optional() });
@@ -23,13 +23,17 @@ export function ingest(store: Store, item: Evidence): void {
   const old = store.get<Candidate>('candidates', item.id);
   const incoming = normalizeMetadata(item);
   item = normalizeMetadata({ ...item, ...metadataFields(old || {}), ...metadataFields(item), firstDiscoveredAt: old?.firstDiscoveredAt || old?.fetchedAt || item.firstDiscoveredAt || item.fetchedAt });
+  item.discoveryRules={...old?.discoveryRules,...item.discoveryRules};
+  if(old?.original&&!item.original&&item.sourceKind!=='x'&&old.finalUrl===item.finalUrl){
+    item={...item,...old,...metadataFields(item),fetchedAt:item.fetchedAt,discoveryRules:item.discoveryRules,discoveredBy:[...new Set([...(old.discoveredBy||[old.sourceId]),...(item.discoveredBy||[item.sourceId])])]};
+  }
   // A fresh X response must still fail the existing thresholds if required
   // metrics disappeared; optional author fields can retain their last value.
   if (item.sourceKind === 'x') for (const key of ['likes', 'reposts', 'views', 'authorFollowers'] as const) item[key] = incoming[key];
-  if (old && old.collectedHash === item.contentHash) {
+  if (old && old.collectedHash === item.contentHash && !(item.sourceKind!=='x'&&item.original&&!old.original)) {
     const metadataChanged=old.postType !== item.postType || JSON.stringify(old.outboundUrls) !== JSON.stringify(item.outboundUrls);
     const recovered=item.sourceKind === 'x' && old.quality?.decision === 'filtered' && item.quality?.decision === 'eligible' && (metadataChanged || !twitterMetrics(old).passed);
-    store.put('candidates', item.id, { ...old, ...metadataFields(item), firstDiscoveredAt: item.firstDiscoveredAt, ...(item.sourceKind === 'x' ? {...twitterFields(item),quality:item.quality,...(item.quality?.decision === 'filtered' ? {processedHash:old.contentHash} : {})} : {}), postType: item.postType || old.postType, inReplyToId: item.inReplyToId, inReplyToAuthorId: item.inReplyToAuthorId, conversationId: item.conversationId, outboundUrls: item.outboundUrls || old.outboundUrls, fetchedAt: item.fetchedAt, discoveredBy: [...new Set([...(old.discoveredBy || [old.sourceId]), ...(item.discoveredBy || [item.sourceId])])], ...(recovered ? {original:item.original,quality:item.quality,processedHash:null,attempts:0} : {}) }); return;
+    store.put('candidates', item.id, { ...old, ...metadataFields(item), discoveryRules:item.discoveryRules, firstDiscoveredAt: item.firstDiscoveredAt, ...(item.sourceKind === 'x' ? {...twitterFields(item),quality:item.quality,...(item.quality?.decision === 'filtered' ? {processedHash:old.contentHash} : {})} : {}), postType: item.postType || old.postType, inReplyToId: item.inReplyToId, inReplyToAuthorId: item.inReplyToAuthorId, conversationId: item.conversationId, outboundUrls: item.outboundUrls || old.outboundUrls, fetchedAt: item.fetchedAt, discoveredBy: [...new Set([...(old.discoveredBy || [old.sourceId]), ...(item.discoveredBy || [item.sourceId])])], ...(recovered ? {original:item.original,quality:item.quality,processedHash:null,attempts:0} : {}) }); return;
   }
   store.put('candidates', item.id, { ...item, collectedHash: item.contentHash, processedHash: old?.processedHash || null, attempts: 0 });
 }
@@ -108,7 +112,7 @@ export class Collector {
     const results=z.object({result:z.array(z.unknown())}).parse(data.data).result;
     const rows=typed?results:z.array(z.object({result_type:z.string(),data:z.array(z.unknown()).optional()})).parse(results).find(item=>item.result_type==='video')?.data || [];
     const schema=z.object({bvid:z.string().regex(/^BV[A-Za-z0-9]+$/),title:z.string(),author:z.string(),mid:z.union([z.number(),z.string()]).optional(),description:z.string().optional(),pubdate:z.number()}).passthrough();
-    const items=rows.slice(0,10).flatMap(row=>{const parsed=schema.safeParse(row);if(!parsed.success)return[];const item=parsed.data;const text=load(item.description||'').text().trim();return[applyQuality(makeEvidence(source,{url:`https://www.bilibili.com/video/${item.bvid}/`,externalId:item.bvid,title:load(item.title).text(),text:'[B站公开视频简介，未读取视频或字幕] '+text,publishedAt:isoDate(new Date(item.pubdate*1000).toISOString()),author:item.author,contentKind:'description',original:text.length>=40,...sourceMetadata('bilibili',item),metricsCheckedAt:new Date().toISOString()}))];});
+    const items=rows.slice(0,20).flatMap(row=>{const parsed=schema.safeParse(row);if(!parsed.success)return[];const item=parsed.data;const text=load(item.description||'').text().trim();return[applyQuality(makeEvidence(source,{url:`https://www.bilibili.com/video/${item.bvid}/`,externalId:item.bvid,title:load(item.title).text(),text:'[B站公开视频简介，未读取视频或字幕] '+text,publishedAt:isoDate(new Date(item.pubdate*1000).toISOString()),author:item.author,contentKind:'description',original:text.length>=40,...sourceMetadata('bilibili',item),metricsCheckedAt:new Date().toISOString()}))];});
     this.store.put('cache',cacheId,{expires:Date.now()+30*60000,items});
     return this.result(source,items,undefined,'公开视频简介与作者、发布时间；保留视频链接，未读取字幕');
   }
@@ -183,7 +187,7 @@ export class Collector {
     // Explicit targets support one-time repair of referenced legacy evidence;
     // scheduled refresh still only reads original posts and obeys the interval.
     const due=this.store.list<Candidate>('candidates').filter(item=>item.sourceId === source.id && item.sourceKind === 'x' && withinWindow(item.publishedAt,now) && (targetIds ? targetIds.has(item.externalId) : item.postType === 'original' && now-(Date.parse(item.metricsAttemptedAt || item.metricsCheckedAt || '') || 0) >= TWITTER_METRICS_INTERVAL));
-    const knownPass=(item:Candidate)=>item.likes!>=10 && item.reposts!>=5 && item.views!>=500;
+    const knownPass=(item:Candidate)=>twitterMetrics(item).passed;
     due.sort((a,b)=>(Date.parse(a.metricsAttemptedAt || a.metricsCheckedAt || '')||0)-(Date.parse(b.metricsAttemptedAt || b.metricsCheckedAt || '')||0) || Number(knownPass(b))-Number(knownPass(a)) || Date.parse(b.publishedAt!)-Date.parse(a.publishedAt!));
     if(!due.length)return this.result(source,[],'cached','没有到期的原创指标需要回查');
     const remaining=settings.xResultDailyLimit-(this.store.usage().xResults||0);
@@ -235,14 +239,16 @@ export class Collector {
       return { ...item, original: false, text: `${item.text}\n[原文未读取：${safeError(error)}]` };
     }
   }
-  async linked(item: Evidence): Promise<Evidence[]> {
-    const evidence: Evidence[]=[];
-    for (const url of linkedUrls(item).slice(0,2)) {
-      const source:Source={id:item.sourceId,name:'推文引用原文',kind:'web',url,enabled:true,official:false};
-      const value=await this.enrich(makeEvidence(source,{url,title:'推文引用原文',text:'待核验的原始链接',discoveredBy:item.discoveredBy || [item.sourceId]}));
-      evidence.push(applyQuality(value));
-    }
-    return evidence;
+  async linked(item: Evidence, cached: Evidence[]=[]): Promise<Evidence[]> {
+    const urls=linkedUrls(item).sort((a,b)=>Number(officialUrl(b))-Number(officialUrl(a))).slice(0,2);
+    return Promise.all(urls.map(async url=>{
+      const saved=cached.find(value=>value.original&&(value.url===url||value.finalUrl===url));
+      if(saved)return applyQuality(saved);
+      const name=item.sourceKind==='x'?'推文引用原文':'候选引用原文';
+      const source:Source={id:item.sourceId,name,kind:'web',url,enabled:true,official:false};
+      const value=await this.enrich(makeEvidence(source,{url,title:name,text:'待核验的原始链接',discoveredBy:item.discoveredBy || [item.sourceId]}));
+      return applyQuality(value);
+    }));
   }
   result(source: Source, items: Evidence[], status?: SourceResult['status'], message = ''): Collected {
     items = items.map(normalizeMetadata);

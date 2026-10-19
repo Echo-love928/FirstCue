@@ -28,12 +28,12 @@ test('蓝 V 同时效热度分加权 10%，不更改官方身份或越过硬门�
   assert.equal(twitterHeat(blue),twitterHeat(plain)*1.1);assert.equal(blue.official,false);
   const candidates=[plain,blue].map(item=>({...item,processedHash:null,attempts:0}));
   assert.equal(selectCandidates(candidates,2)[0].id,blue.id);
-  assert.equal(selectCandidates([{...post('bad',{authorBlueVerified:true,likes:9}),attempts:0,processedHash:null}],2).length,0);
+  assert.equal(selectCandidates([{...post('bad',{authorBlueVerified:true,likes:4}),attempts:0,processedHash:null}],2).length,0);
 });
 
 test('正文未变但指标达标恢复审核；重复采集不会重置 AI 重试次数',()=>{
   const store=new Store(':memory:');try{
-    const low=post('1',{likes:9});ingest(store,low);store.put('candidates',low.id,{...store.get<Candidate>('candidates',low.id),attempts:3,processedHash:low.contentHash});
+    const low=post('1',{likes:4});ingest(store,low);store.put('candidates',low.id,{...store.get<Candidate>('candidates',low.id),attempts:3,processedHash:low.contentHash});
     ingest(store,post());let saved=store.get<Candidate>('candidates',low.id)!;
     assert.equal(saved.contentHash,low.contentHash);assert.equal(saved.quality?.decision,'eligible');assert.equal(saved.attempts,0);assert.equal(saved.processedHash,null);
     store.put('candidates',low.id,{...saved,attempts:2});ingest(store,post());saved=store.get<Candidate>('candidates',low.id)!;assert.equal(saved.attempts,2);

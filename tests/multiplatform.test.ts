@@ -157,7 +157,7 @@ test('原生 B站请求不占引擎轮转位置，微博查询不会每次固定
     collector.videoSearch=async source=>collector.result(source,[],'empty');
     collector.web=async source=>{used.push(source.id);return collector.result(source,[],'empty');};
     await new Runner(store,collector,{analyze:async()=>{throw Error('No candidates');}}).scan('测试');
-    assert.equal(used.length,4);assert.equal(new Set(used.slice(0,3)).size,3);assert.notEqual(used[0],used[2]);
+    assert.equal(used.length,8);assert.equal(new Set(used.slice(0,3)).size,3);assert.notEqual(used[0],used[2]);
   }finally{store.close();}
 });
 

@@ -15,13 +15,17 @@ import { currentSignal, historicalSignal, expiredEvidence, FRESHNESS_HOURS, sign
 import { discoveryCandidate } from './quality.js';
 import { analysisFingerprint, matchesRule, needsAnalysis } from '../shared/relevance.js';
 import { normalizeMetadata } from '../shared/engagement.js';
+import { collectedSignals } from './collected-feed.js';
 const ruleInput = z.object({ name: z.string().trim().min(1).max(100), query: z.string().trim().min(1).max(300), kind: z.enum(['keyword', 'topic']), enabled: z.boolean(), notify: z.boolean() });
 const settingsInput = z.object({ model: z.string().trim().max(150), recipient: z.union([z.literal(''), z.email()]), feishuEnabled: z.boolean(), aiDailyLimit: z.number().int().min(1).max(10000), xDailyLimit: z.number().int().min(1).max(100000), xResultDailyLimit: z.number().int().min(20).max(1000000), searchPerRunLimit: z.number().int().min(1).max(20), candidatePerRunLimit: z.number().int().min(1).max(60), lookbackHours: z.literal(FRESHNESS_HOURS) });
-export function dashboard(store: Store, includeHistory = false): Dashboard {
+export function dashboard(store: Store, includeHistory = false, unified = false): Dashboard {
   const heartbeat = store.get<string>('state', 'workerHeartbeat');
+  const schedule=store.get<{nextAt:string;lastAt:string|null}>('state','digestSchedule');
+  const notificationView=<T extends MailJob|FeishuJob>(job:T):T=>job.digest?{...job,signal:{...job.signal,evidence:[]},digest:{...job.digest,count:job.digest.signals.length,signals:[],keys:[]}}:job;
   const rules=store.list<Rule>('rules'); const enabled=rules.filter(rule=>rule.enabled);
   const events=store.list<Signal>('events').map(item=>item.relevanceVersion===undefined?item:{...item,ruleIds:item.ruleIds.filter(id=>{const rule=rules.find(rule=>rule.id===id);return !rule || matchesRule(item,rule);})});
-  return { rules: store.list<Rule>('rules'), sources: store.list<Source>('sources'), accounts: store.list<Account>('accounts'), events: events.filter(item=>includeHistory ? historicalSignal(item) : currentSignal(item)).map(item=>({...item,evidence:item.evidence.map(normalizeMetadata)})).sort((a,b)=>(signalTime(b)||0)-(signalTime(a)||0)), runs: store.list<Run>('runs').slice(0, 30), notifications: [...store.list<MailJob>('mail').map(job => ({ ...job, channel: 'mail' as const })), ...store.list<FeishuJob>('feishu')].sort((a,b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 100), settings: store.settings(), configured: { ai: !!config.aiKey, x: !!config.xKey, mail: mailConfigured(), feishu: feishuConfigured(), feishuSigning: !!config.feishuSecret, proxy: !!(process.env.HTTP_PROXY || process.env.HTTPS_PROXY) }, usage: store.usage(), worker: { alive: !!heartbeat && Date.now() - Date.parse(heartbeat) < 45000, heartbeat }, pendingAnalysis: store.list<Candidate>('candidates').filter(item => discoveryCandidate(item) && (needsAnalysis(item,enabled)) && (item.analysisFingerprint!==analysisFingerprint(enabled) || item.attempts < 3)).length, relevanceReview:[...store.list<Candidate>('candidates').filter(item=>item.relevanceExclusion?.category==='insufficient').map(item=>({id:item.id,title:item.title,reason:item.relevanceExclusion!.reason,url:item.finalUrl})),...store.list<Signal>('events').filter(item=>item.auditOnly&&item.auditReason?.startsWith('关联待审核')).map(item=>({id:item.id,title:item.title,reason:item.auditReason!,url:item.evidence[0]?.finalUrl||''}))].slice(0,50), intervalMinutes: 30, scanQueued: !!store.get('state', 'scanRequest') };
+  if(unified)events.push(...collectedSignals(store.list<Candidate>('candidates'),rules,events.filter(item=>includeHistory?historicalSignal(item):currentSignal(item))));
+  return { notificationSchedule:schedule?{nextAt:schedule.nextAt,lastAt:schedule.lastAt,intervalMinutes:30}:undefined, rules: store.list<Rule>('rules'), sources: store.list<Source>('sources'), accounts: store.list<Account>('accounts'), events: events.filter(item=>includeHistory ? historicalSignal(item) : currentSignal(item)).map(item=>({...item,evidence:item.evidence.map(normalizeMetadata)})).sort((a,b)=>(signalTime(b)||0)-(signalTime(a)||0)), runs: store.list<Run>('runs').slice(0, 30), notifications: [...store.list<MailJob>('mail').map(job => ({ ...notificationView(job), channel: 'mail' as const })), ...store.list<FeishuJob>('feishu').map(job=>({...notificationView(job),channel:'feishu' as const,targetId:job.targetId}))].sort((a,b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, 100), settings: store.settings(), configured: { ai: !!config.aiKey, x: !!config.xKey, mail: mailConfigured(), feishu: feishuConfigured(), feishuSigning: !!config.feishuSecret, proxy: !!(process.env.HTTP_PROXY || process.env.HTTPS_PROXY) }, usage: store.usage(), worker: { alive: !!heartbeat && Date.now() - Date.parse(heartbeat) < 45000, heartbeat }, pendingAnalysis: store.list<Candidate>('candidates').filter(item => discoveryCandidate(item) && (needsAnalysis(item,enabled)) && (item.analysisFingerprint!==analysisFingerprint(enabled) || item.attempts < 3)).length, relevanceReview:[...store.list<Candidate>('candidates').filter(item=>item.relevanceExclusion?.category==='insufficient').map(item=>({id:item.id,title:item.title,reason:item.relevanceExclusion!.reason,url:item.finalUrl})),...store.list<Signal>('events').filter(item=>item.auditOnly&&item.auditReason?.startsWith('关联待审核')).map(item=>({id:item.id,title:item.title,reason:item.auditReason!,url:item.evidence[0]?.finalUrl||''}))].slice(0,50), intervalMinutes: 30, scanQueued: !!store.get('state', 'scanRequest') };
 }
 export function createApp(store: Store, http: HttpClient) {
   const app = express(); app.disable('x-powered-by');
@@ -34,11 +38,17 @@ export function createApp(store: Store, http: HttpClient) {
     if (req.path.startsWith('/api')) res.setHeader('Cache-Control', 'no-store'); next();
   });
   app.use(express.json({ limit: '32kb' }));
-  app.get('/api/dashboard', (req, res) => { const query = z.object({ history: z.literal('all').optional() }).parse(req.query); res.json(dashboard(store, query.history === 'all')); });
+  app.get('/api/dashboard', (req, res) => { const query = z.object({ history: z.literal('all').optional(),view:z.literal('all').optional() }).parse(req.query); res.json(dashboard(store, query.history === 'all',query.view==='all')); });
   app.get('/api/audit', (_req, res) => res.json({
     candidates: store.list<Candidate>('candidates').filter(item=>item.relevanceExclusion || expiredEvidence(item) || item.quality?.decision === 'filtered' || item.quality?.decision === 'context').slice(0,200),
     events: store.list<Signal>('events').filter(item=>!currentSignal(item)).slice(0,100),
   }));
+  app.get('/api/notifications/:channel/:id', (req,res)=>{
+    const channel=z.enum(['mail','feishu']).parse(req.params.channel);
+    const job=store.get<MailJob>(channel,req.params.id);
+    if(!job)return res.status(404).json({error:'通知不存在'});
+    res.json(job);
+  });
   app.get('/api/health', (_req, res) => res.json({ status: 'ok', version: '0.1.0' }));
   app.post('/api/rules', (req, res) => { const input = ruleInput.parse(req.body); const now = new Date().toISOString(); const rule: Rule = { ...input, notify: input.kind === 'keyword' && input.notify, id: randomUUID(), createdAt: now, baselineAt: null, nextRunAt: now, lastRunAt: null }; store.put('rules', rule.id, rule); res.status(201).json(rule); });
   app.patch('/api/rules/:id', (req, res) => { const rule = store.get<Rule>('rules', req.params.id); if (!rule) return res.status(404).json({ error: '监控不存在' }); const input = ruleInput.partial().parse(req.body); const updated = { ...rule, ...input }; updated.notify = updated.kind === 'keyword' && updated.notify; if (input.query && input.query !== rule.query || input.kind && input.kind !== rule.kind) { updated.baselineAt = null; updated.nextRunAt = new Date().toISOString(); } if (input.enabled && !rule.enabled) updated.nextRunAt = new Date().toISOString(); store.put('rules', rule.id, updated); res.json(updated); });
@@ -70,6 +80,7 @@ export function createApp(store: Store, http: HttpClient) {
   app.post('/api/feishu/:id/retry', (req, res) => {
     const job = store.get<FeishuJob>('feishu', req.params.id);
     if (!job) return res.status(404).json({ error: '通知不存在' });
+    if(!job.digest&&store.get('state','digestSchedule'))return res.status(409).json({error:'逐条通知已停用，后续热点会按 30 分钟整体汇总'});
     if (job.status === 'submitted') return res.status(409).json({ error: '飞书已接受的消息不重复发送' });
     if (job.status !== 'failed') return res.status(409).json({ error: '该消息正在排队或自动重试，请勿重复触发' });
     if (!store.settings().feishuEnabled || !feishuConfigured()) return res.status(400).json({ error: '请先配置并启用飞书通知' });
@@ -77,7 +88,7 @@ export function createApp(store: Store, http: HttpClient) {
     if (!subscription || subscription.targetId !== job.targetId || subscription.targetId !== hash(config.feishuWebhook) || Date.parse(job.createdAt) < Date.parse(subscription.activatedAt)) return res.status(409).json({ error: '飞书群或启用时间已变更，旧任务不能重发到当前群' });
     store.put('feishu', job.id, { ...job, status: 'pending', attempts: 0, nextAttemptAt: new Date().toISOString(), error: null }); res.json({ ok: true });
   });
-  app.post('/api/mail/:id/retry', (req, res) => { const job = store.get<MailJob>('mail', req.params.id); if (!job) return res.status(404).json({ error: '通知不存在' }); if (job.status === 'submitted') return res.status(409).json({ error: '已提交的邮件不重复发送' }); store.put('mail', job.id, { ...job, status: 'pending', attempts: 0, nextAttemptAt: new Date().toISOString(), error: null }); res.json({ ok: true }); });
+  app.post('/api/mail/:id/retry', (req, res) => { const job = store.get<MailJob>('mail', req.params.id); if (!job) return res.status(404).json({ error: '通知不存在' }); if(!job.digest&&store.get('state','digestSchedule'))return res.status(409).json({error:'逐条通知已停用，后续热点会按 30 分钟整体汇总'}); if(job.digest&&job.digest.targetId!==hash(store.settings().recipient.trim().toLowerCase()))return res.status(409).json({error:'接收邮箱已变更，旧汇总不能发送到新邮箱'}); if (job.status === 'submitted') return res.status(409).json({ error: '已提交的邮件不重复发送' }); store.put('mail', job.id, { ...job, status: 'pending', attempts: 0, nextAttemptAt: new Date().toISOString(), error: null }); res.json({ ok: true }); });
   app.use('/api', (_req, res) => res.status(404).json({ error: '接口不存在' }));
   const dist = path.resolve('dist'); if (existsSync(path.join(dist, 'index.html'))) { app.use(express.static(dist, { index: false })); app.get('/{*splat}', (_req, res) => res.sendFile(path.join(dist, 'index.html'))); }
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => { if (error instanceof z.ZodError) return res.status(400).json({ error: `输入格式有误：${error.issues.map(issue => `${issue.path.join('.')} ${issue.message}`).join('；')}` }); res.status(500).json({ error: safeError(error) }); });

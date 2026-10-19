@@ -5,6 +5,7 @@ import { Store } from './db.js';
 import { hash } from './parse.js';
 import { currentSignal } from '../shared/freshness.js';
 import { directAssessments, matchesRule } from '../shared/relevance.js';
+import { flushDigestJobs, mailDigestContent } from './digest.js';
 export function eligible(signal: Signal, rule: Rule, now=Date.now()): boolean { return currentSignal(signal,now) && rule.enabled && rule.notify && rule.kind === 'keyword' && signal.status === 'confirmed' && matchesRule(signal, rule) && !signal.relevanceRechecked && !!rule.baselineAt && !!signal.occurredAt && Date.parse(signal.occurredAt) > Date.parse(rule.baselineAt); }
 export function queueNotifications(store: Store, signals: Signal[], rules: Rule[], now = Date.now()): number {
   let count = 0;
@@ -27,8 +28,14 @@ export class Mailer {
   constructor(public store: Store, transport?: MailTransport) { this.transport = transport || nodemailer.createTransport({ host: config.smtpHost, port: config.smtpPort, secure: config.smtpSecure, requireTLS: !config.smtpSecure, auth: { user: config.smtpUser, pass: config.smtpPass }, connectionTimeout: 15000, greetingTimeout: 15000, socketTimeout: 20000 }); }
   async verify(): Promise<void> { if (!mailConfigured()) throw new Error('SMTP 未配置，请填写 .env 后重启'); await this.transport.verify(); }
   async test(): Promise<void> { await this.verify(); const recipient = this.store.settings().recipient; if (!recipient) throw new Error('请先填写接收邮箱'); const response = await this.transport.sendMail({ from: config.smtpFrom, to: recipient, subject: '[FirstCue] 邮件通知测试', text: '这是一封 FirstCue 测试邮件。收到它后，邮件通知链路可以进行验收。' }); if (!response.accepted.length || response.rejected?.length) throw new Error('SMTP 未接受测试邮件的收件人'); }
-  async flush(now = Date.now(), allowTestTransport = false): Promise<void> {
+  async flush(now = Date.now(), allowTestTransport = false, legacy = false): Promise<void> {
     if (!mailConfigured() && !allowTestTransport || !this.store.settings().recipient) return;
+    if(!legacy){
+      await flushDigestJobs(this.store,'mail',async(job,digest)=>{
+        const result=await this.transport.sendMail({from:config.smtpFrom,to:job.recipient,subject:`[FirstCue] ${job.title}`,messageId:'messageId' in job?job.messageId:`<digest-${job.id}@signal.local>`,...mailDigestContent(digest)});
+        if(!result.accepted.length||result.rejected?.length)throw Error('SMTP 未接受汇总邮件的收件人');
+      },now);return;
+    }
     for (const job of this.store.list<MailJob>('mail').filter(item => ['pending', 'retry'].includes(item.status) && Date.parse(item.nextAttemptAt) <= now).slice(0, 10)) {
       const rule = this.store.get<Rule>('rules', job.ruleId); const signal = this.store.get<Signal>('events', job.eventId);
       if (!rule || !signal || !eligible(signal, rule,now)) { this.store.put('mail', job.id, { ...job, status: 'failed', error: '监控已暂停/删除、事件过期或核验状态改变，取消发送' }); continue; }

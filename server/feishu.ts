@@ -6,6 +6,7 @@ import type { HttpClient } from './http.js';
 import { hash } from './parse.js';
 import { eligible } from './mail.js';
 import { directAssessments } from '../shared/relevance.js';
+import { feishuDigestContent, flushDigestJobs } from './digest.js';
 
 export function validFeishuWebhook(raw: string): boolean {
   try {
@@ -82,8 +83,9 @@ export class FeishuNotifier {
   async test(): Promise<void> {
     await this.send({ msg_type: 'text', content: { text: '[FirstCue] 飞书通知测试：收到这条消息后，请确认群机器人通知正常。邮箱通知继续独立发送。' } });
   }
-  async flush(now = Date.now()): Promise<void> {
+  async flush(now = Date.now(), legacy = false): Promise<void> {
     if (!this.store.settings().feishuEnabled || !feishuConfigured()) return;
+    if(!legacy){await flushDigestJobs(this.store,'feishu',async(_job,digest)=>{const content=feishuDigestContent(digest);await this.send(content.message,now);return content.renderedCount;},now);return;}
     const targetId = hash(config.feishuWebhook);
     const subscription = this.store.get<Subscription>('state', 'feishuSubscription');
     // One message per worker tick avoids bursts against Feishu's per-second limit.

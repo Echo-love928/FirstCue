@@ -75,7 +75,7 @@ test('闲置时也过期：接口立即隐藏，清理只标记且不删原文�
     assert.equal(dashboard(store).events.length,0);assert.equal(store.list('events').length,1);
     const saved=store.get<Candidate>('candidates',ev.id)!;
     assert.equal(saved.text,ev.text);assert.equal(saved.processedHash,saved.contentHash);assert.equal(saved.quality?.decision,'filtered');
-    await mailer.flush(expired,true);assert.equal(sent,0);assert.equal(store.list<{status:string}>('mail')[0].status,'failed');
+    await mailer.flush(expired,true,true);assert.equal(sent,0);assert.equal(store.list<{status:string}>('mail')[0].status,'failed');
     assert.deepEqual(expireContent(store,expired),{candidates:0,events:0});
   }finally{store.close();}
 });

@@ -11,7 +11,7 @@ export const config = {
   feishuWebhook: (process.env.FEISHU_WEBHOOK_URL || '').trim(), feishuSecret: (process.env.FEISHU_SIGNING_SECRET || '').trim(),
 };
 export const INTERVAL_MS = 30 * 60 * 1000;
-export const defaults: Settings = { model: process.env.OPENROUTER_MODEL || '', recipient: process.env.NOTIFY_EMAIL || '', feishuEnabled: false, aiDailyLimit: 100, xDailyLimit: 200, xResultDailyLimit: 2000, searchPerRunLimit: 10, candidatePerRunLimit: 30, lookbackHours: FRESHNESS_HOURS };
+export const defaults: Settings = { model: process.env.OPENROUTER_MODEL || '', recipient: process.env.NOTIFY_EMAIL || '', feishuEnabled: false, aiDailyLimit: 100, xDailyLimit: 200, xResultDailyLimit: 2000, searchPerRunLimit: 16, candidatePerRunLimit: 30, lookbackHours: FRESHNESS_HOURS };
 export function safeError(error: unknown): string {
   let message = error instanceof Error ? error.message : String(error);
   for (const secret of [config.aiKey, config.xKey, config.smtpPass, config.feishuWebhook, config.feishuSecret, config.feishuWebhook.split('/').at(-1)]) if (secret) message = message.split(secret).join('[已隐藏]');
