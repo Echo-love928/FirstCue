@@ -4,6 +4,13 @@ FirstCue 是一款 AI 热点监控与情报聚合工具，帮助用户持续追�
 项目采用 TypeScript 全栈开发，前端基于 React、Vite 和 Tailwind CSS，后端使用 Node.js、Express 与 SQLite，通过独立 Worker 执行后台任务，可接入 OpenRouter 生成摘要和辅助分析。技术特点包括增量采集、游标续查、缓存限速、调用预算控制及持久化通知去重。
 此外，项目提供独立的 Agent Skill：仅依赖 Python 标准库，无需启动后端或安装第三方包，由宿主 AI 完成分析，便于复制、分发和跨 AI 工具使用。
 
+## 截图
+<img width="1891" height="900" alt="image" src="https://github.com/user-attachments/assets/64b12668-5ecb-4db9-bb45-89d837aabc3a" />
+<img width="1615" height="831" alt="image" src="https://github.com/user-attachments/assets/986bee41-771b-40cb-83df-65cc648345d4" />
+<img width="1605" height="891" alt="image" src="https://github.com/user-attachments/assets/9b675e9d-b2e4-41c4-8eaa-1d1f6d89c744" />
+<img width="1610" height="900" alt="image" src="https://github.com/user-attachments/assets/39aef370-2a0b-4d91-8a73-3986621653d8" />
+
+
 ## 本地运行
 
 需要 Node.js **24.16.0–24.x**。项目使用该版本的 `node:sqlite`，不兼容旧版 Node。
